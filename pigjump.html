@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pig Jump — Proof of Concept</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  html, body { height: 100%; background: #87CEEB; overflow: hidden; font-family: -apple-system, sans-serif; }
+  #game-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+  canvas { background: #87CEEB; box-shadow: 0 0 20px rgba(0,0,0,0.2); }
+  #hud { position: absolute; top: 20px; left: 20px; font-size: 24px; font-weight: bold; color: #333; text-shadow: 1px 1px 0 #fff; }
+  #overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; }
+  #overlay.hidden { display: none; }
+  h1 { font-size: 32px; margin-bottom: 10px; }
+  p { font-size: 18px; margin-bottom: 20px; text-align: center; }
+  button { padding: 15px 30px; font-size: 20px; background: #f39c12; border: none; border-radius: 10px; color: #fff; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #d35400; }
+  button:active { transform: translateY(4px); box-shadow: none; }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <canvas id="gameCanvas"></canvas>
+  <div id="hud">Счёт: <span id="score">0</span></div>
+  <div id="overlay">
+    <h1>🐷 Pig Jump</h1>
+    <p>Тапай по экрану, чтобы свинка прыгала!</p>
+    <button id="startBtn">Играть</button>
+  </div>
+</div>
+
+<script>
+  const tg = window.Telegram?.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const startBtn = document.getElementById('startBtn');
+  const scoreEl = document.getElementById('score');
+
+  // Настройки физики
+  const GRAVITY = 0.5;
+  const JUMP_FORCE = -9;
+  const PIG_SIZE = 40;
+
+  let width, height;
+  let pig, platforms, score, gameLoop, isPlaying;
+
+  function resize() {
+    width = Math.min(window.innerWidth, 400);
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function initGame() {
+    pig = { x: width / 2 - PIG_SIZE / 2, y: height - 150, vx: 0, vy: 0, w: PIG_SIZE, h: PIG_SIZE };
+    platforms = [];
+    score = 0;
+    scoreEl.innerText = score;
+    isPlaying = true;
+    overlay.classList.add('hidden');
+
+    // Стартовая платформа
+    platforms.push({ x: width / 2 - 50, y: height - 100, w: 100, h: 20 });
+    generatePlatforms();
+
+    if (gameLoop) cancelAnimationFrame(gameLoop);
+    loop();
+  }
+
+  function generatePlatforms() {
+    let lastY = height - 100;
+    // Генерируем платформы на 2 экрана вверх
+    while (lastY > -height) {
+      lastY -= (Math.random() * 100 + 80); // Расстояние между платформами
+      const pWidth = Math.random() * 40 + 60;
+      const pX = Math.random() * (width - pWidth);
+      platforms.push({ x: pX, y: lastY, w: pWidth, h: 20 });
+    }
+  }
+
+  function update() {
+    if (!isPlaying) return;
+
+    // Физика свинки
+    pig.vy += GRAVITY;
+    pig.y += pig.vy;
+
+    // Движение камеры (скролл вверх, если свинка поднимается выше середины экрана)
+    if (pig.y < height / 2) {
+      const diff = height / 2 - pig.y;
+      pig.y += diff;
+      platforms.forEach(p => p.y += diff);
+    }
+
+    // Коллизии с платформами (только при падении)
+    if (pig.vy > 0) {
+      platforms.forEach(p => {
+        // Если свинка пересекается с платформой по X и находится на её уровне по Y
+        if (pig.x + pig.w > p.x && pig.x < p.x + p.w &&
+            pig.y + pig.h > p.y && pig.y + pig.h < p.y + p.h + pig.vy) {
+          
+          pig.vy = JUMP_FORCE; // Автоматический прыжок
+          score += 10;
+          scoreEl.innerText = score;
+          if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+      });
+    }
+
+    // Если свинка упала вниз
+    if (pig.y > height) {
+      gameOver();
+    }
+
+    // Удаляем пропавшие платформы и генерируем новые
+    platforms = platforms.filter(p => p.y < height + 100);
+    if (platforms.length < 5) generatePlatforms();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+    
+    // Фон (облака)
+    ctx.fillStyle = '#87CEEB';
+    ctx.fillRect(0, 0, width, height);
+
+    // Платформы
+    ctx.fillStyle = '#8B4513';
+    platforms.forEach(p => {
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      // Травка сверху
+      ctx.fillStyle = '#32CD32';
+      ctx.fillRect(p.x, p.y, p.w, 5);
+      ctx.fillStyle = '#8B4513';
+    });
+
+    // Свинка
+    ctx.fillStyle = '#FFB6C1'; // Розовый
+    ctx.beginPath();
+    ctx.roundRect(pig.x, pig.y, pig.w, pig.h, 10);
+    ctx.fill();
+    // Глазки
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(pig.x + 12, pig.y + 15, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(pig.x + 28, pig.y + 15, 3, 0, Math.PI * 2); ctx.fill();
+    // Пятачок
+    ctx.fillStyle = '#FF69B4';
+    ctx.beginPath(); ctx.ellipse(pig.x + 20, pig.y + 25, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function loop() {
+    update();
+    draw();
+    if (isPlaying) gameLoop = requestAnimationFrame(loop);
+  }
+
+  function gameOver() {
+    isPlaying = false;
+    overlay.classList.remove('hidden');
+    overlay.innerHTML = `
+      <h1>Игра окончена</h1>
+      <p>Ваш счёт: <b>${score}</b></p>
+      <button id="restartBtn">Ещё раз</button>
+    `;
+    document.getElementById('restartBtn').addEventListener('click', () => {
+      // Возвращаем стартовое окно
+      overlay.innerHTML = `
+        <h1>🐷 Pig Jump</h1>
+        <p>Тапай по экрану, чтобы свинка прыгала!</p>
+        <button id="startBtn">Играть</button>
+      `;
+      document.getElementById('startBtn').addEventListener('click', initGame);
+    });
+    if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+  }
+
+  // Управление тапом (свинка прыгает от платформы автоматически, 
+  // но мы можем дать ей дополнительный прыжок по тапу, если она в воздухе)
+  function handleJump() {
+    if (!isPlaying) return;
+    // Если нужно ручное управление, раскомментируйте:
+    // if (pig.vy > -5) pig.vy = JUMP_FORCE; 
+  }
+
+  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleJump(); }, { passive: false });
+  canvas.addEventListener('mousedown', handleJump);
+  startBtn.addEventListener('click', initGame);
+</script>
+</body>
+</html>
