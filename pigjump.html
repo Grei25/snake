@@ -3,194 +3,427 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Pig Jump — Proof of Concept</title>
+<title>Pig Jump — Telegram WebApp</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
-  html, body { height: 100%; background: #87CEEB; overflow: hidden; font-family: -apple-system, sans-serif; }
-  #game-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-  canvas { background: #87CEEB; box-shadow: 0 0 20px rgba(0,0,0,0.2); }
-  #hud { position: absolute; top: 20px; left: 20px; font-size: 24px; font-weight: bold; color: #333; text-shadow: 1px 1px 0 #fff; }
-  #overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; }
+  html, body { height: 100%; background: #87CEEB; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #game-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+  canvas { display: block; background: linear-gradient(#8ed6ff, #d9f2ff); box-shadow: 0 0 20px rgba(0,0,0,0.2); touch-action: none; }
+  #hud {
+    position: absolute; top: 16px; left: max(16px, calc(50% - 199px)); z-index: 4;
+    display: flex; gap: 14px; align-items: center;
+    padding: 9px 13px; border-radius: 12px;
+    color: #fff; font-size: 15px; font-weight: 700;
+    background: rgba(23,33,43,0.45);
+    backdrop-filter: blur(8px);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+  #overlay {
+    position: absolute; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 24px; text-align: center; color: #fff;
+    background: rgba(12,25,36,0.62);
+    backdrop-filter: blur(5px);
+  }
   #overlay.hidden { display: none; }
-  h1 { font-size: 32px; margin-bottom: 10px; }
-  p { font-size: 18px; margin-bottom: 20px; text-align: center; }
-  button { padding: 15px 30px; font-size: 20px; background: #f39c12; border: none; border-radius: 10px; color: #fff; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #d35400; }
-  button:active { transform: translateY(4px); box-shadow: none; }
+  h1 { font-size: 32px; line-height: 1.15; text-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+  p { max-width: 310px; font-size: 16px; line-height: 1.5; color: #eaf7ff; }
+  p .small { font-size: 13px; color: #b9d6e8; }
+  #overlay button {
+    margin-top: 4px; padding: 15px 34px; border: none; border-radius: 14px;
+    font-family: inherit; font-size: 19px; font-weight: 700; color: #fff; cursor: pointer;
+    background: #f39c12; box-shadow: 0 4px 0 #d35400;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #overlay button:active { transform: translateY(4px); box-shadow: none; }
+  .overlay-menu { margin-top: 2px; padding: 6px; color: #b9d6e8; font-size: 14px; font-weight: 600; text-decoration: none; }
+  .overlay-menu:active { opacity: 0.7; }
+  .menu-link {
+    position: fixed; top: 14px; right: max(14px, calc(50% - 201px)); z-index: 30;
+    padding: 9px 13px; border-radius: 10px;
+    color: #fff; text-decoration: none; font-size: 14px; font-weight: 600;
+    background: rgba(23,33,43,0.55); border: 1px solid rgba(255,255,255,0.15);
+    backdrop-filter: blur(8px);
+  }
+  .menu-link:active { transform: scale(0.96); }
+  #controls {
+    position: absolute; left: 50%; bottom: 18px; z-index: 10;
+    display: flex; align-items: center; gap: 10px;
+    transform: translateX(-50%);
+  }
+  #controls.hidden { display: none; }
+  .ctrl {
+    width: 64px; height: 56px; border: none; border-radius: 16px;
+    color: #fff; font-family: inherit; font-size: 22px; font-weight: 700;
+    background: rgba(23,33,43,0.55); box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+    backdrop-filter: blur(8px); cursor: pointer; touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ctrl-jump { width: 116px; font-size: 16px; }
+  .ctrl:active { transform: scale(0.94); background: rgba(23,33,43,0.8); }
+  @media (max-width: 360px) {
+    #hud { top: 10px; left: 10px; font-size: 13px; }
+    .menu-link { top: 10px; right: 10px; font-size: 12px; }
+    #controls { bottom: 12px; gap: 8px; }
+    .ctrl { width: 58px; height: 52px; }
+    .ctrl-jump { width: 104px; font-size: 15px; }
+  }
 </style>
 </head>
 <body>
 <div id="game-container">
   <canvas id="gameCanvas"></canvas>
-  <div id="hud">Счёт: <span id="score">0</span></div>
+  <div id="hud">
+    <span>Счёт: <span id="score">0</span></span>
+    <span>Рекорд: <span id="best">0</span></span>
+  </div>
+
+  <div id="controls" class="hidden">
+    <button class="ctrl" id="btnLeft" aria-label="Влево">◀</button>
+    <button class="ctrl ctrl-jump" id="btnJump">Прыжок</button>
+    <button class="ctrl" id="btnRight" aria-label="Вправо">▶</button>
+  </div>
+
   <div id="overlay">
     <h1>🐷 Pig Jump</h1>
-    <p>Тапай по экрану, чтобы свинка прыгала!</p>
+    <p>Прыгай по платформам всё выше!<br>
+      <span class="small">← → или кнопки — движение<br>Тап или пробел — прыжок</span>
+    </p>
     <button id="startBtn">Играть</button>
   </div>
 </div>
+<a class="menu-link" href="index.html">← Выбор игры</a>
 
 <script>
   const tg = window.Telegram?.WebApp;
-  if (tg) { tg.ready(); tg.expand(); }
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    try { tg.setHeaderColor?.('#87CEEB'); } catch (e) {}
+  }
 
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
   const overlay = document.getElementById('overlay');
-  const startBtn = document.getElementById('startBtn');
   const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const controls = document.getElementById('controls');
+  const btnLeft = document.getElementById('btnLeft');
+  const btnRight = document.getElementById('btnRight');
+  const btnJump = document.getElementById('btnJump');
 
   // Настройки физики
-  const GRAVITY = 0.5;
-  const JUMP_FORCE = -9;
-  const PIG_SIZE = 40;
+  const GRAVITY = 0.55;
+  const JUMP_FORCE = -11;
+  const PIG_SIZE = 42;
+  const MOVE_SPEED = 5.4;
+  const MAX_FALL = 17;
 
-  let width, height;
-  let pig, platforms, score, gameLoop, isPlaying;
+  let width = 0;
+  let height = 0;
+  let pig = { x: 0, y: 0, w: PIG_SIZE, h: PIG_SIZE, vx: 0, vy: 0 };
+  let platforms = [];
+  let score = 0;
+  let best = parseInt(localStorage.getItem('pig_best') || '0', 10);
+  let isPlaying = false;
+  let gameLoop = null;
+  let lastTime = 0;
+  let airJumpUsed = false;
+  const keys = { left: false, right: false };
+
+  bestEl.textContent = best;
 
   function resize() {
-    width = Math.min(window.innerWidth, 400);
+    width = Math.min(window.innerWidth, 430);
     height = window.innerHeight;
     canvas.width = width;
     canvas.height = height;
+    pig.x = Math.max(-pig.w, Math.min(pig.x, width));
   }
   window.addEventListener('resize', resize);
   resize();
 
-  function initGame() {
-    pig = { x: width / 2 - PIG_SIZE / 2, y: height - 150, vx: 0, vy: 0, w: PIG_SIZE, h: PIG_SIZE };
-    platforms = [];
-    score = 0;
-    scoreEl.innerText = score;
-    isPlaying = true;
-    overlay.classList.add('hidden');
-
-    // Стартовая платформа
-    platforms.push({ x: width / 2 - 50, y: height - 100, w: 100, h: 20 });
-    generatePlatforms();
-
-    if (gameLoop) cancelAnimationFrame(gameLoop);
-    loop();
-  }
-
-  function generatePlatforms() {
-    let lastY = height - 100;
-    // Генерируем платформы на 2 экрана вверх
-    while (lastY > -height) {
-      lastY -= (Math.random() * 100 + 80); // Расстояние между платформами
-      const pWidth = Math.random() * 40 + 60;
-      const pX = Math.random() * (width - pWidth);
-      platforms.push({ x: pX, y: lastY, w: pWidth, h: 20 });
-    }
-  }
-
-  function update() {
-    if (!isPlaying) return;
-
-    // Физика свинки
-    pig.vy += GRAVITY;
-    pig.y += pig.vy;
-
-    // Движение камеры (скролл вверх, если свинка поднимается выше середины экрана)
-    if (pig.y < height / 2) {
-      const diff = height / 2 - pig.y;
-      pig.y += diff;
-      platforms.forEach(p => p.y += diff);
-    }
-
-    // Коллизии с платформами (только при падении)
-    if (pig.vy > 0) {
-      platforms.forEach(p => {
-        // Если свинка пересекается с платформой по X и находится на её уровне по Y
-        if (pig.x + pig.w > p.x && pig.x < p.x + p.w &&
-            pig.y + pig.h > p.y && pig.y + pig.h < p.y + p.h + pig.vy) {
-          
-          pig.vy = JUMP_FORCE; // Автоматический прыжок
-          score += 10;
-          scoreEl.innerText = score;
-          if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
-        }
+  function fillPlatforms() {
+    if (!platforms.length) return;
+    let highest = Math.min(...platforms.map(p => p.y));
+    while (highest > -height) {
+      highest -= 58 + Math.random() * 34;
+      const pWidth = 68 + Math.random() * 54;
+      platforms.push({
+        x: Math.random() * (width - pWidth),
+        y: highest,
+        w: pWidth,
+        h: 18
       });
     }
+  }
 
-    // Если свинка упала вниз
-    if (pig.y > height) {
-      gameOver();
+  function initGame() {
+    if (gameLoop) cancelAnimationFrame(gameLoop);
+    resize();
+
+    pig = {
+      x: width / 2 - PIG_SIZE / 2,
+      y: height - 140,
+      w: PIG_SIZE,
+      h: PIG_SIZE,
+      vx: 0,
+      vy: 0
+    };
+    platforms = [];
+    score = 0;
+    scoreEl.textContent = '0';
+    isPlaying = true;
+    airJumpUsed = false;
+    keys.left = false;
+    keys.right = false;
+
+    overlay.classList.add('hidden');
+    controls.classList.remove('hidden');
+
+    // Стартовая платформа
+    const startY = height - 90;
+    platforms.push({ x: width / 2 - 65, y: startY, w: 130, h: 18 });
+    pig.y = startY - PIG_SIZE;
+    fillPlatforms();
+
+    lastTime = performance.now();
+    draw();
+    gameLoop = requestAnimationFrame(loop);
+  }
+
+  function update(dt) {
+    if (!isPlaying) return;
+
+    // Горизонтальное движение
+    const move = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    pig.vx = move * MOVE_SPEED;
+    pig.x += pig.vx * dt;
+    if (pig.x + pig.w < 0) pig.x = width;
+    else if (pig.x > width) pig.x = -pig.w;
+
+    // Физика
+    const prevBottom = pig.y + pig.h;
+    pig.vy = Math.min(pig.vy + GRAVITY * dt, MAX_FALL);
+    pig.y += pig.vy * dt;
+
+    // Приземление на платформу (только при падении)
+    if (pig.vy > 0) {
+      for (const p of platforms) {
+        if (pig.x + pig.w > p.x && pig.x < p.x + p.w &&
+            prevBottom <= p.y && pig.y + pig.h >= p.y) {
+          pig.y = p.y - pig.h;
+          pig.vy = JUMP_FORCE;
+          airJumpUsed = false;
+          score += 10;
+          scoreEl.textContent = score;
+          if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+          break;
+        }
+      }
     }
 
-    // Удаляем пропавшие платформы и генерируем новые
-    platforms = platforms.filter(p => p.y < height + 100);
-    if (platforms.length < 5) generatePlatforms();
+    // Камера: держим свинку в верхней части экрана
+    const targetY = height * 0.45;
+    if (pig.y < targetY) {
+      const diff = targetY - pig.y;
+      pig.y = targetY;
+      platforms.forEach(p => { p.y += diff; });
+    }
+
+    // Убираем улетевшие вниз платформы и добавляем новые сверху
+    platforms = platforms.filter(p => p.y < height + 80);
+    fillPlatforms();
+
+    // Упали
+    if (pig.y > height + 60) {
+      gameOver();
+    }
+  }
+
+  function drawClouds() {
+    ctx.fillStyle = 'rgba(255,255,255,0.72)';
+    const clouds = [
+      { x: 0.12, y: 0.12, s: 0.9 },
+      { x: 0.62, y: 0.22, s: 0.7 },
+      { x: 0.28, y: 0.42, s: 0.55 },
+      { x: 0.75, y: 0.62, s: 0.8 }
+    ];
+    for (const c of clouds) {
+      const x = c.x * width;
+      const y = c.y * height;
+      const s = c.s;
+      ctx.beginPath();
+      ctx.arc(x, y, 22 * s, 0, Math.PI * 2);
+      ctx.arc(x + 24 * s, y - 8 * s, 28 * s, 0, Math.PI * 2);
+      ctx.arc(x + 52 * s, y, 20 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawPig() {
+    const { x, y, w, h } = pig;
+
+    // Ушки (за телом)
+    ctx.fillStyle = '#ff9fb5';
+    ctx.beginPath();
+    ctx.moveTo(x + 7, y + 7);
+    ctx.lineTo(x + 14, y - 5);
+    ctx.lineTo(x + 22, y + 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + w - 7, y + 7);
+    ctx.lineTo(x + w - 14, y - 5);
+    ctx.lineTo(x + w - 22, y + 7);
+    ctx.closePath();
+    ctx.fill();
+
+    // Тело
+    ctx.fillStyle = '#FFB6C1';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 13);
+    ctx.fill();
+
+    // Глаза
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x + 13, y + 15, 5, 0, Math.PI * 2);
+    ctx.arc(x + w - 13, y + 15, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#263238';
+    ctx.beginPath();
+    ctx.arc(x + 14, y + 15, 2.5, 0, Math.PI * 2);
+    ctx.arc(x + w - 12, y + 15, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Пятачок
+    ctx.fillStyle = '#FF8FAB';
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, y + 29, 10, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#C2185B';
+    ctx.beginPath();
+    ctx.arc(x + w / 2 - 4, y + 29, 1.8, 0, Math.PI * 2);
+    ctx.arc(x + w / 2 + 4, y + 29, 1.8, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   function draw() {
-    ctx.clearRect(0, 0, width, height);
-    
-    // Фон (облака)
-    ctx.fillStyle = '#87CEEB';
+    // Небо
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, '#7ec8f7');
+    sky.addColorStop(1, '#d9f2ff');
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, height);
 
-    // Платформы
-    ctx.fillStyle = '#8B4513';
-    platforms.forEach(p => {
-      ctx.fillRect(p.x, p.y, p.w, p.h);
-      // Травка сверху
-      ctx.fillStyle = '#32CD32';
-      ctx.fillRect(p.x, p.y, p.w, 5);
-      ctx.fillStyle = '#8B4513';
-    });
+    drawClouds();
 
-    // Свинка
-    ctx.fillStyle = '#FFB6C1'; // Розовый
-    ctx.beginPath();
-    ctx.roundRect(pig.x, pig.y, pig.w, pig.h, 10);
-    ctx.fill();
-    // Глазки
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(pig.x + 12, pig.y + 15, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(pig.x + 28, pig.y + 15, 3, 0, Math.PI * 2); ctx.fill();
-    // Пятачок
-    ctx.fillStyle = '#FF69B4';
-    ctx.beginPath(); ctx.ellipse(pig.x + 20, pig.y + 25, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+    // Платформы
+    for (const p of platforms) {
+      ctx.fillStyle = '#8B5A2B';
+      ctx.beginPath();
+      ctx.roundRect(p.x, p.y, p.w, p.h, 6);
+      ctx.fill();
+      ctx.fillStyle = '#4FC24A';
+      ctx.beginPath();
+      ctx.roundRect(p.x, p.y, p.w, 6, { tl: 6, tr: 6, bl: 0, br: 0 });
+      ctx.fill();
+    }
+
+    drawPig();
   }
 
-  function loop() {
-    update();
+  function loop(now) {
+    if (!isPlaying) return;
+    const dt = Math.min((now - lastTime) / 16.667, 2.5) || 1;
+    lastTime = now;
+    update(dt);
     draw();
     if (isPlaying) gameLoop = requestAnimationFrame(loop);
   }
 
   function gameOver() {
     isPlaying = false;
-    overlay.classList.remove('hidden');
+    if (gameLoop) {
+      cancelAnimationFrame(gameLoop);
+      gameLoop = null;
+    }
+    controls.classList.add('hidden');
+
+    if (score > best) {
+      best = score;
+      localStorage.setItem('pig_best', String(best));
+      bestEl.textContent = best;
+    }
+
     overlay.innerHTML = `
       <h1>Игра окончена</h1>
-      <p>Ваш счёт: <b>${score}</b></p>
+      <p>Счёт: <b>${score}</b><br><span class="small">Рекорд: ${best}</span></p>
       <button id="restartBtn">Ещё раз</button>
+      <a class="overlay-menu" href="index.html">← Выбор игры</a>
     `;
-    document.getElementById('restartBtn').addEventListener('click', () => {
-      // Возвращаем стартовое окно
-      overlay.innerHTML = `
-        <h1>🐷 Pig Jump</h1>
-        <p>Тапай по экрану, чтобы свинка прыгала!</p>
-        <button id="startBtn">Играть</button>
-      `;
-      document.getElementById('startBtn').addEventListener('click', initGame);
-    });
+    overlay.classList.remove('hidden');
+
     if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
   }
 
-  // Управление тапом (свинка прыгает от платформы автоматически, 
-  // но мы можем дать ей дополнительный прыжок по тапу, если она в воздухе)
+  // Прыжок: одно дополнительное нажатие в воздухе
   function handleJump() {
-    if (!isPlaying) return;
-    // Если нужно ручное управление, раскомментируйте:
-    // if (pig.vy > -5) pig.vy = JUMP_FORCE; 
+    if (!isPlaying || airJumpUsed) return;
+    airJumpUsed = true;
+    pig.vy = JUMP_FORCE * 0.92;
+    if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
   }
 
-  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleJump(); }, { passive: false });
-  canvas.addEventListener('mousedown', handleJump);
-  startBtn.addEventListener('click', initGame);
+  function bindHold(el, key) {
+    const down = (e) => { e.preventDefault(); keys[key] = true; };
+    const up = (e) => { e.preventDefault(); keys[key] = false; };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('pointerleave', up);
+    el.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  bindHold(btnLeft, 'left');
+  bindHold(btnRight, 'right');
+  btnJump.addEventListener('pointerdown', (e) => { e.preventDefault(); handleJump(); });
+
+  // Тап по игровому полю — прыжок
+  canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); handleJump(); });
+
+  // Клавиатура
+  document.addEventListener('keydown', (e) => {
+    const k = e.key.toLowerCase();
+    if (k === 'arrowleft' || k === 'a' || k === 'ф') {
+      keys.left = true;
+      e.preventDefault();
+    } else if (k === 'arrowright' || k === 'd' || k === 'в') {
+      keys.right = true;
+      e.preventDefault();
+    } else if (e.code === 'Space' || k === 'arrowup' || k === 'w' || k === 'ц') {
+      e.preventDefault();
+      if (!e.repeat) handleJump();
+    }
+  });
+
+  document.addEventListener('keyup', (e) => {
+    const k = e.key.toLowerCase();
+    if (k === 'arrowleft' || k === 'a' || k === 'ф') keys.left = false;
+    else if (k === 'arrowright' || k === 'd' || k === 'в') keys.right = false;
+  });
+
+  // Кнопки в оверлее
+  overlay.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.id === 'startBtn' || btn.id === 'restartBtn') initGame();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) lastTime = performance.now();
+  });
 </script>
 </body>
 </html>
