@@ -5,9 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Pig Jump — Telegram WebApp</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+  // Если игру открыли из бота без выбора — сначала показываем меню игр
+  if (!new URLSearchParams(location.search).has('play') && window.Telegram?.WebApp?.initData) {
+    location.replace('index.html');
+  }
+</script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
-  html, body { height: 100%; background: #87CEEB; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  html, body { height: 100%; background: #87CEEB; overflow: hidden; overscroll-behavior: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   #game-container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; overflow: hidden; }
   canvas { display: block; background: linear-gradient(#8ed6ff, #d9f2ff); box-shadow: 0 0 20px rgba(0,0,0,0.2); touch-action: none; }
   #hud {
@@ -101,6 +107,7 @@
     tg.ready();
     tg.expand();
     try { tg.setHeaderColor?.('#87CEEB'); } catch (e) {}
+    try { tg.disableVerticalSwipes?.(); } catch (e) {}
   }
 
   const canvas = document.getElementById('gameCanvas');
@@ -242,8 +249,7 @@
     }
   }
 
-  function drawClouds() {
-    ctx.fillStyle = 'rgba(255,255,255,0.72)';
+  function drawClouds() {    ctx.fillStyle = 'rgba(255,255,255,0.72)';
     const clouds = [
       { x: 0.12, y: 0.12, s: 0.9 },
       { x: 0.62, y: 0.22, s: 0.7 },
@@ -260,6 +266,26 @@
       ctx.arc(x + 52 * s, y, 20 * s, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  function roundedRect(x, y, w, h, r) {
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, w, h, r);
+      return;
+    }
+    const rr = typeof r === 'number'
+      ? { tl: r, tr: r, br: r, bl: r }
+      : { tl: 0, tr: 0, br: 0, bl: 0, ...r };
+    ctx.moveTo(x + rr.tl, y);
+    ctx.lineTo(x + w - rr.tr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr.tr);
+    ctx.lineTo(x + w, y + h - rr.br);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr.br, y + h);
+    ctx.lineTo(x + rr.bl, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr.bl);
+    ctx.lineTo(x, y + rr.tl);
+    ctx.quadraticCurveTo(x, y, x + rr.tl, y);
+    ctx.closePath();
   }
 
   function drawPig() {
@@ -283,7 +309,7 @@
     // Тело
     ctx.fillStyle = '#FFB6C1';
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 13);
+    roundedRect(x, y, w, h, 13);
     ctx.fill();
 
     // Глаза
@@ -324,11 +350,11 @@
     for (const p of platforms) {
       ctx.fillStyle = '#8B5A2B';
       ctx.beginPath();
-      ctx.roundRect(p.x, p.y, p.w, p.h, 6);
+      roundedRect(p.x, p.y, p.w, p.h, 6);
       ctx.fill();
       ctx.fillStyle = '#4FC24A';
       ctx.beginPath();
-      ctx.roundRect(p.x, p.y, p.w, 6, { tl: 6, tr: 6, bl: 0, br: 0 });
+      roundedRect(p.x, p.y, p.w, 6, { tl: 6, tr: 6, bl: 0, br: 0 });
       ctx.fill();
     }
 
